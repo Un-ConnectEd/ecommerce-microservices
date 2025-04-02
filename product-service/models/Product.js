@@ -34,7 +34,6 @@ const ProductSchema = new Schema({
   thumbnail: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-  // Now referencing seller by ID (string) from Seller model.
   seller: { type: String, ref: 'Seller', required: true }
 });
 
