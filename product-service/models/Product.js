@@ -12,6 +12,7 @@ const ProductSchema = new Schema({
   title: { type: String, required: true },
   seller_name: { type: String },
   brand: { type: String },
+<<<<<<< HEAD
   description: { type: String },
   initial_price: { type: Number, default: null },
   final_price: { type: String },
@@ -95,6 +96,31 @@ ProductSchema.pre('save', async function (next) {
     }
   }
   next();
+=======
+  sku: { type: String },
+  weight: { type: Number },
+  dimensions: {
+    width: Number,
+    height: Number,
+    depth: Number
+  },
+  warrantyInformation: { type: String },
+  shippingInformation: { type: String },
+  availabilityStatus: { type: String },
+  returnPolicy: { type: String },
+  minimumOrderQuantity: { type: Number },
+  meta: {
+    createdAt: { type: Date },
+    updatedAt: { type: Date },
+    barcode: { type: String },
+    qrCode: { type: String }
+  },
+  images: [{ type: String }],
+  thumbnail: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  seller: { type: String, ref: 'Seller', required: true }
+>>>>>>> dd2adbe0a50721b1daf4667e0d272dbe5f0be68c
 });
 
 module.exports = mongoose.model('Product', ProductSchema);
