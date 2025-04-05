@@ -9,6 +9,11 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 // Connect to the Product database
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,

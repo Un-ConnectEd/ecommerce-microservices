@@ -4,39 +4,31 @@ const axios = require('axios');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const Seller = require('../models/Seller');
-const { authenticate, adminOnly } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
-// URL for the product service API (adjust as needed)
-const PRODUCT_SERVICE_URL = 'http://localhost:3002/api/products';
+const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL;
 
-/* ====================================
-   Seller Account Routes
-==================================== */
 
-// Seller Registration
 router.post('/register', async (req, res) => {
   try {
-    // Check if a seller with the same email exists
     const existingSeller = await Seller.findOne({ email: req.body.email });
     if (existingSeller) {
       return res.status(409).json({ error: 'Seller with this email already exists.' });
     }
-    // Hash the provided password using virtual setter if not using pre-save hook
-    // (Alternatively, you can rely on a pre-save hook in the model to do the hashing.)
+
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(req.body.password, salt);
 
-    const sellerData = {
+    const seller = new Seller({
       storeName: req.body.storeName,
       email: req.body.email,
-      passwordHash, // store the hashed password
+      passwordHash,
       phone: req.body.phone,
       address: req.body.address,
       website: req.body.website
-    };
+    });
 
-    const seller = new Seller(sellerData);
     await seller.save();
     res.status(201).json(seller);
   } catch (err) {
@@ -52,28 +44,48 @@ router.post('/login', async (req, res) => {
     if (!seller) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
+
     const isMatch = await bcrypt.compare(password, seller.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
-    // Generate a JWT token with seller info
+
     const token = jwt.sign(
       { id: seller._id, email: seller.email, role: 'seller' },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
-    res.json({ seller, token });
+
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 1000 // 1 hour
+    });
+
+    const safeSeller = seller.toObject();
+    delete safeSeller.passwordHash;
+
+    res.json({ seller: safeSeller });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// Get Seller Profile (Protected)
+// Logout
+router.post('/logout', (req, res) => {
+  res.clearCookie('authToken', {
+    httpOnly: true,
+    // secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  res.status(200).json({ message: 'Logged out successfully' });
+});
+
+// Get seller profile
 router.get('/profile', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id;
-    // Exclude the passwordHash from the returned profile
-    const seller = await Seller.findById(sellerId).select('-passwordHash');
+    const seller = await Seller.findById(req.user.id).select('-passwordHash');
     if (!seller) {
       return res.status(404).json({ error: 'Seller not found.' });
     }
@@ -83,10 +95,9 @@ router.get('/profile', authenticate, async (req, res) => {
   }
 });
 
-// Update Seller Info (Protected)
+// Update seller profile
 router.put('/profile', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id;
     const updateFields = {
       storeName: req.body.storeName,
       phone: req.body.phone,
@@ -95,16 +106,16 @@ router.put('/profile', authenticate, async (req, res) => {
       updatedAt: Date.now()
     };
 
-    // If a new password is provided, hash it before updating
     if (req.body.password) {
       const salt = await bcrypt.genSalt(10);
       updateFields.passwordHash = await bcrypt.hash(req.body.password, salt);
     }
-    
-    const updatedSeller = await Seller.findByIdAndUpdate(sellerId, updateFields, { new: true });
+
+    const updatedSeller = await Seller.findByIdAndUpdate(req.user.id, updateFields, { new: true });
     if (!updatedSeller) {
       return res.status(404).json({ error: 'Seller not found.' });
     }
+
     const sellerResponse = updatedSeller.toObject();
     delete sellerResponse.passwordHash;
     res.json(sellerResponse);
@@ -113,84 +124,66 @@ router.put('/profile', authenticate, async (req, res) => {
   }
 });
 
-/* ====================================
-   Seller Product Routes (via Product Service)
-==================================== */
-
-// Create a new product by the authenticated seller
+// Create product
 router.post('/products', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id; // Extract seller ID from JWT token
-    req.body.seller = sellerId;   // Associate product with the seller
-    const response = await axios.post(PRODUCT_SERVICE_URL, req.body, {
-      headers: { Authorization: req.headers.authorization }
-    });
+    req.body.seller = req.user.id;
+
+    const response = await axios.post(PRODUCT_SERVICE_URL, req.body);
     res.status(201).json(response.data);
   } catch (err) {
     res.status(400).json({ error: err.response?.data || err.message });
   }
 });
 
-// Update a product (only if it belongs to the authenticated seller)
+// Update product
 router.put('/products/:id', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id;
-    // Fetch the product details from the product service
     const productResponse = await axios.get(`${PRODUCT_SERVICE_URL}/${req.params.id}`);
     const product = productResponse.data;
+
     if (!product) {
       return res.status(404).json({ error: "Product not found." });
     }
-    if (product.seller !== sellerId) {
+    if (product.seller !== req.user.id) {
       return res.status(403).json({ error: "Not authorized to update this product." });
     }
-    // Update the product; pass the token along if required by the product service
-    const updateResponse = await axios.put(
-      `${PRODUCT_SERVICE_URL}/${req.params.id}`,
-      req.body,
-      { headers: { Authorization: req.headers.authorization } }
-    );
+
+    const updateResponse = await axios.put(`${PRODUCT_SERVICE_URL}/${req.params.id}`, req.body);
     res.json(updateResponse.data);
   } catch (err) {
     res.status(400).json({ error: err.response?.data || err.message });
   }
 });
 
-// Delete a product (only if it belongs to the authenticated seller)
+// Delete product
 router.delete('/products/:id', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id;
-    // Retrieve the product to verify ownership
     const productResponse = await axios.get(`${PRODUCT_SERVICE_URL}/${req.params.id}`);
     const product = productResponse.data;
+
     if (!product) {
       return res.status(404).json({ error: "Product not found." });
     }
-    if (product.seller !== sellerId) {
+    if (product.seller !== req.user.id) {
       return res.status(403).json({ error: "Not authorized to delete this product." });
     }
-    // Delete the product via the product service
-    const deleteResponse = await axios.delete(`${PRODUCT_SERVICE_URL}/${req.params.id}`, {
-      headers: { Authorization: req.headers.authorization }
-    });
+
+    const deleteResponse = await axios.delete(`${PRODUCT_SERVICE_URL}/${req.params.id}`);
     res.json(deleteResponse.data);
   } catch (err) {
     res.status(400).json({ error: err.response?.data || err.message });
   }
 });
 
-// List all products for the authenticated seller
+// Get seller's products
 router.get('/products', authenticate, async (req, res) => {
   try {
-    const sellerId = req.user.id;
-    // Assuming the product service supports filtering by seller query parameter
-    const response = await axios.get(`${PRODUCT_SERVICE_URL}?seller=${sellerId}`);
+    const response = await axios.get(`${PRODUCT_SERVICE_URL}?seller=${req.user.id}`);
     res.json(response.data);
   } catch (err) {
     res.status(400).json({ error: err.response?.data || err.message });
   }
 });
-
-
 
 module.exports = router;

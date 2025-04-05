@@ -5,29 +5,30 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 require('dotenv').config();
-
+const cookieParser = require('cookie-parser')
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 // Rate limiter: Allow only 100 requests per minute per IP
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 1 * 60 * 1000,
+  max: 100, 
   message: "Too many requests, please try again later.",
 });
 
-// Apply the rate limiting middleware globally
 app.use(limiter);
 
-// Enable CORS for all origins
-app.use(cors());
 
-// Set security-related HTTP headers
 app.use(helmet());
 
 // Log HTTP requests
-app.use(morgan('combined')); // or 'tiny' for simpler logs
+app.use(morgan('combined')); 
 
 // Microservice mapping
 const serviceMapping = {

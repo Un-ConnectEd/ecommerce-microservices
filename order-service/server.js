@@ -12,6 +12,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 // Routes
 app.use('/api/orders', orderRoutes);
 app.use('/api/carts', cartRoutes);

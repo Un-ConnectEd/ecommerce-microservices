@@ -2,12 +2,18 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const dotenv = require('dotenv').config();
+require('dotenv').config();
 const userRoutes = require('./routes/userRoutes');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
+
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,

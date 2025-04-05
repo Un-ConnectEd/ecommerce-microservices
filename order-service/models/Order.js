@@ -11,12 +11,16 @@ const OrderSchema = new Schema({
     postalCode: { type: String, required: true },
     country: { type: String, required: true }
   },
+  phoneNumber: { type: String, required: true }, // Receiver's phone number
   paymentMethod: {
     type: String,
     enum: ['Credit Card', 'Debit Card', 'UPI', 'Cash on Delivery'],
     required: true
   },
-  paymentTransactionId: { type: String, required: function() { return this.paymentMethod !== 'Cash on Delivery'; } },
+  paymentTransactionId: {
+    type: String,
+    required: function () { return this.paymentMethod !== 'Cash on Delivery'; }
+  },
   paymentStatus: {
     type: String,
     enum: ['Pending', 'Completed', 'Failed', 'Refunded'],
