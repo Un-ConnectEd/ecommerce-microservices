@@ -29,6 +29,8 @@ router.get('/:id', async (req, res) => {
 
       await product.save();
       console.log(`Saved new product with generated _id to DB`);
+      
+      return res.json(product);
     }
 
     res.send(product);
@@ -184,5 +186,99 @@ router.post('/decrement', authenticate, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ==============================
+// Get products by category
+// ==============================
+
+router.get('/category/:categoryName', async (req, res) => {
+  try {
+    const category = req.params.categoryName;
+    console.log(`Searching products in category: ${category}`);
+
+    const products = await Product.find({
+      categories: { $regex: new RegExp(category, 'i') } // case-insensitive match
+    }).lean();
+
+    if (products.length === 0) {
+      return res.status(404).json({ message: `No products found for category: ${category}` });
+    }
+
+    res.send(products);  // Use res.json instead of res.send
+  } catch (err) {
+    console.error('Error fetching products by category:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ==============================
+// Search Products (with optional filters, sorting, and pagination)
+// ==============================
+
+router.get('/search', async (req, res) => {
+  try {
+    const { query, limit, page, sortField, sortOrder, category } = req.query;
+
+    // Validate that 'query' exists
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    // Define pagination and sorting parameters
+    const limitNumber = parseInt(limit) || 10;
+    const pageNumber = parseInt(page) || 1;
+
+    // Define the filter object for querying
+    const filter = {
+      $or: [
+        { title: { $regex: query, $options: 'i' } }, 
+        { description: { $regex: query, $options: 'i' } }, 
+        { categories: { $elemMatch: { $regex: query, $options: 'i' } } }, 
+        { seller_name: { $regex: query, $options: 'i' } } 
+      ]
+    };
+
+    // Add the category filter if it's provided
+    if (category) {
+      filter.categories = { $regex: category, $options: 'i' }; 
+    }
+
+    // Add sorting if provided orelse not sorted
+    const sortOptions = sortField && sortOrder
+      ? { [sortField]: sortOrder === 'asc' ? 1 : -1 }
+      : {};
+
+    // Perform the query
+    const [results, totalCount] = await Promise.all([
+      Product.find(filter)
+        .sort(sortOptions)
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber)
+        .lean(), 
+      Product.countDocuments(filter) 
+    ]);
+
+    // Return the search results 
+    return res.json({
+      success: true,
+      message: 'Search completed successfully',
+      data: {
+        query,
+        results,
+        pagination: {
+          total: totalCount,
+          page: pageNumber,
+          pages: Math.ceil(totalCount / limitNumber),
+          limit: limitNumber
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error in search route:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 
 module.exports = router;
