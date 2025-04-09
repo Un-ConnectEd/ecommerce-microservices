@@ -6,6 +6,11 @@ const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: 'Too many attempts, please try again later'
+});
 // Register a new user
 router.post('/register', async (req, res) => {
   try {
@@ -15,6 +20,8 @@ router.post('/register', async (req, res) => {
     }
 
     const user = new User(req.body);
+    delete user.role;
+
     await user.save();
 
     const token = jwt.sign(
@@ -25,48 +32,54 @@ router.post('/register', async (req, res) => {
 
     res.cookie('authToken', token, {
       httpOnly: true,
-      // secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 3600000, // 1 hour
     });
-
-    res.status(201).json({ user });
+    
+    const userDetails = {
+      _id: user._id,
+      email: user.email,
+      role: user.role
+    };
+    res.status(201).json({ user: userDetails});
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
 // Login user
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
-    }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
+    
+    if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
+      process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
     res.cookie('authToken', token, {
       httpOnly: true,
-      // secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
       maxAge: 3600000,
     });
 
-    res.json({ user });
+    res.json({
+      user: {
+        _id: user._id,
+        email: user.email,
+        role: user.role
+      }
+    });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

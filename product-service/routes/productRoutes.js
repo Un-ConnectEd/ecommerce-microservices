@@ -13,7 +13,7 @@ router.get('/:id', async (req, res) => {
     const productId = req.params.id; // _id is an ObjectId string
     console.log(`Fetching product with ID: ${productId}`);
 
-    let product = await Product.findById(productId);
+    let product = await Product.findById(productId).lean();
 
     if (!product) {
       console.log(`Product ${productId} not found in DB, fetching from external API`);
@@ -31,7 +31,7 @@ router.get('/:id', async (req, res) => {
       console.log(`Saved new product with generated _id to DB`);
     }
 
-    res.json(product);
+    res.send(product);
   } catch (err) {
     console.error(`Error fetching product ${req.params.id}:`, err.message);
     res.status(400).json({ error: err.message });
@@ -43,8 +43,8 @@ router.get('/:id', async (req, res) => {
 // ==============================
 router.get('/', async (req, res) => {
   try {
-    const products = await Product.find().limit(50);
-    res.json(products);
+    const products = await Product.find().limit(50).lean();
+    res.send(products);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

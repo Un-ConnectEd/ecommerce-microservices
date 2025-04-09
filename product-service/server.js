@@ -14,6 +14,12 @@ app.use(cors({
   credentials: true
 }));
 
+const dbURI = process.env.MONGODB_URI; // Ensure this gets the correct value from .env
+console.log(dbURI)
+if (!dbURI) {
+  console.error('MongoDB URI is not defined. Please check your .env file.');
+  process.exit(1);
+}
 // Connect to the Product database
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
